@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 'use strict';
 // 分你一只耳机 · MCP Server
-// 支持两种传输模式：
+// 支持三种传输模式：
 //   1. stdio（Claude Desktop / Claude Code）
-//   2. SSE 远程（Claude.ai 手机端 / 网页端，通过 connector 接入）
+//   2. Streamable HTTP（Claude.ai 手机端 / 网页端，通过 connector 接入）
+//   3. 集成模式：挂到 express app 上（和 one-earbud 后端同进程）
 //
 // 用法：
 //   stdio 模式：  node mcp-server.js
-//   SSE 模式：    node mcp-server.js --sse          （独立跑，默认端口 3001）
+//   HTTP 模式：   node mcp-server.js --http         （独立跑，默认端口 3001）
 //   集成模式：    在 example-server.js 里 require 并挂到 express app 上
 //
 // 环境变量：
 //   ONE_EARBUD_URL   — one-earbud 服务地址（stdio 模式用，默认 http://localhost:8787）
 //   ONE_EARBUD_TOKEN — 访问口令（和 .env 里的一致）
-//   MCP_PORT         — SSE 独立模式端口（默认 3001）
+//   MCP_PORT         — HTTP 独立模式端口（默认 3001）
 
 const http = require('http');
 const https = require('https');
@@ -149,9 +150,6 @@ const TOOLS = [
 ];
 
 // ── 工具执行 ────────────────────────────────────────────────────────────
-// 两种模式：
-//   A) 远程模式（callToolRemote）：走 HTTP 调 /api/music/tool
-//   B) 直连模式（callToolDirect）：直接调 authority handler（集成进 example-server 时用）
 let toolHandler = null; // 直连时由 mountMcp 设置
 
 async function callToolRemote(name, args) {
@@ -161,16 +159,12 @@ async function callToolRemote(name, args) {
 }
 
 async function callTool(name, args) {
-  if (toolHandler) {
-    // 直连模式
-    return toolHandler({ action: name, ...(args || {}) });
-  }
-  // 远程模式
+  if (toolHandler) return toolHandler({ action: name, ...(args || {}) });
   return callToolRemote(name, args);
 }
 
 // ── MCP 协议处理（传输无关）──────────────────────────────────────────────
-const SERVER_INFO = { name: 'one-earbud', version: '0.1.0' };
+const SERVER_INFO = { name: 'one-earbud', version: '0.2.0' };
 const CAPABILITIES = { tools: {} };
 
 async function handleJsonRpc(msg) {
@@ -235,114 +229,161 @@ function startStdio() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 传输层 B：SSE 远程（Claude.ai 手机端 / 网页端）
-// 协议：MCP over SSE
-//   GET  /sse       → SSE 流，先发 endpoint 事件告诉客户端 POST 地址
-//   POST /message   → 客户端发 JSON-RPC 请求，回应通过 SSE 流推回
+// 传输层 B：Streamable HTTP（Claude.ai 连接器用的新版协议）
+// 协议：
+//   POST /mcp  → 客户端发 JSON-RPC，服务器回 JSON 或 SSE 流
+//   GET  /mcp  → 可选的 SSE 流（server→client 推送）
+//   DELETE /mcp → 关闭会话
+//   会话 ID 通过 Mcp-Session-Id 头传递
 // ═══════════════════════════════════════════════════════════════════════
 
-// SSE 会话管理
-const sessions = new Map(); // sessionId -> { res, lastActivity }
-const SESSION_TIMEOUT = 10 * 60 * 1000; // 10 分钟没活动就清
-let mcpPathPrefix = ''; // 集成模式下设为 '/mcp'
+const streamableSessions = new Map(); // sessionId -> { lastActivity, sseRes? }
+const STREAMABLE_TIMEOUT = 10 * 60 * 1000;
 
-function cleanSessions() {
+function cleanStreamableSessions() {
   const now = Date.now();
-  for (const [id, s] of sessions) {
-    if (now - s.lastActivity > SESSION_TIMEOUT) {
-      try { s.res.end(); } catch (_) {}
-      sessions.delete(id);
+  for (const [id, s] of streamableSessions) {
+    if (now - s.lastActivity > STREAMABLE_TIMEOUT) {
+      if (s.sseRes) try { s.sseRes.end(); } catch (_) {}
+      streamableSessions.delete(id);
     }
   }
 }
-setInterval(cleanSessions, 60000).unref();
+setInterval(cleanStreamableSessions, 60000).unref();
 
-function sseWrite(res, event, data) {
-  res.write('event: ' + event + '\n');
-  res.write('data: ' + (typeof data === 'string' ? data : JSON.stringify(data)) + '\n\n');
+function setCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Mcp-Session-Id');
+  res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
 }
 
-function handleSseRoutes(req, res) {
-  const url = new URL(req.url, 'http://localhost');
-  const path = url.pathname;
+function handleStreamableHttp(req, res) {
+  setCorsHeaders(res);
 
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
-  // GET /sse — 建立 SSE 连接
-  if (req.method === 'GET' && path === '/sse') {
-    const sessionId = crypto.randomUUID();
+  // ── POST: 客户端发 JSON-RPC 请求 ──
+  if (req.method === 'POST') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      let msg;
+      try { msg = JSON.parse(body); } catch (_) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+        return;
+      }
+
+      // 判断是 initialize 请求还是普通请求
+      const isInit = msg.method === 'initialize';
+      const isNotification = (msg.method && msg.method.startsWith('notifications/'));
+
+      // 非 initialize 请求需要有效的 session
+      const sessionId = req.headers['mcp-session-id'];
+      if (!isInit && !isNotification && sessionId) {
+        const session = streamableSessions.get(sessionId);
+        if (session) session.lastActivity = Date.now();
+      }
+
+      // 处理通知（不需要回应）
+      if (isNotification) {
+        const resp = await handleJsonRpc(msg);
+        // 通知返回 202 (Accepted)
+        res.writeHead(202);
+        res.end();
+        return;
+      }
+
+      // 处理请求
+      const resp = await handleJsonRpc(msg);
+
+      if (isInit && resp) {
+        // initialize: 创建新 session，在响应头里返回 session ID
+        const newSessionId = crypto.randomUUID();
+        streamableSessions.set(newSessionId, { lastActivity: Date.now() });
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Mcp-Session-Id': newSessionId
+        });
+        res.end(JSON.stringify(resp));
+        return;
+      }
+
+      if (resp) {
+        // 普通请求：直接返回 JSON
+        const headers = { 'Content-Type': 'application/json' };
+        if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+        res.writeHead(200, headers);
+        res.end(JSON.stringify(resp));
+      } else {
+        // 没有响应（比如通知类但没被上面拦住的）
+        res.writeHead(202);
+        res.end();
+      }
+    });
+    return;
+  }
+
+  // ── GET: 可选的 SSE 流（server→client 推送通道）──
+  if (req.method === 'GET') {
+    const sessionId = req.headers['mcp-session-id'];
+    const session = sessionId && streamableSessions.get(sessionId);
+    if (!session) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid session. POST initialize first.' }));
+      return;
+    }
+    session.lastActivity = Date.now();
+
+    // 建立 SSE 流
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-store',
       'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no'
+      'X-Accel-Buffering': 'no',
+      'Mcp-Session-Id': sessionId
     });
+    session.sseRes = res;
 
-    sessions.set(sessionId, { res, lastActivity: Date.now() });
-
-    // 告诉客户端往哪里 POST
-    sseWrite(res, 'endpoint', mcpPathPrefix + '/message?sessionId=' + sessionId);
-
-    // 心跳
     const hb = setInterval(() => {
       try { res.write(': ping\n\n'); } catch (_) { clearInterval(hb); }
     }, 30000);
 
     req.on('close', () => {
       clearInterval(hb);
-      sessions.delete(sessionId);
+      if (session.sseRes === res) session.sseRes = null;
     });
     return;
   }
 
-  // POST /message — 接收 JSON-RPC 请求
-  if (req.method === 'POST' && path === '/message') {
-    const sessionId = url.searchParams.get('sessionId');
-    const session = sessionId && sessions.get(sessionId);
-    if (!session) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid or expired session. Reconnect to /sse.' }));
-      return;
+  // ── DELETE: 关闭会话 ──
+  if (req.method === 'DELETE') {
+    const sessionId = req.headers['mcp-session-id'];
+    if (sessionId) {
+      const session = streamableSessions.get(sessionId);
+      if (session && session.sseRes) try { session.sseRes.end(); } catch (_) {}
+      streamableSessions.delete(sessionId);
     }
-    session.lastActivity = Date.now();
-
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', async () => {
-      try {
-        const msg = JSON.parse(body);
-        // 先回 202 告诉客户端收到了
-        res.writeHead(202, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
-        // 处理请求，通过 SSE 推回
-        const resp = await handleJsonRpc(msg);
-        if (resp && session.res && !session.res.writableEnded) {
-          sseWrite(session.res, 'message', resp);
-        }
-      } catch (e) {
-        if (!res.headersSent) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid JSON' }));
-        }
-      }
-    });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 
-  // 其他路径：404
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found. Use GET /sse to connect.' }));
+  // 其他方法
+  res.writeHead(405, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'Method not allowed. Use POST, GET, or DELETE.' }));
 }
 
-function startSseStandalone() {
+function startHttpStandalone() {
   const port = Number(process.env.MCP_PORT) || 3001;
-  const server = http.createServer(handleSseRoutes);
+  const server = http.createServer(handleStreamableHttp);
   server.listen(port, () => {
-    console.log('[one-earbud-mcp] SSE mode on http://localhost:' + port + '/sse');
+    console.log('[one-earbud-mcp] Streamable HTTP mode on http://localhost:' + port + '/');
     console.log('[one-earbud-mcp] connecting to backend at ' + BASE);
   });
 }
@@ -355,29 +396,24 @@ function mountMcp(app, authority) {
   const { createTaMusicTool } = require('./server/agent/tool-contract');
   const tool = createTaMusicTool({ authority });
   toolHandler = async (input) => tool.handler(input);
-  mcpPathPrefix = '/mcp'; // endpoint 返回完整路径，Claude.ai 才能正确 POST
 
-  // 把 SSE 路由挂到 /mcp 前缀下
+  // Streamable HTTP 端点挂到 /mcp
   app.use('/mcp', (req, res) => {
-    // 重写 url 去掉 /mcp 前缀
-    const orig = req.url;
-    req.url = req.url.replace(/^\/mcp/, '') || '/';
-    handleSseRoutes(req, res);
-    req.url = orig;
+    handleStreamableHttp(req, res);
   });
 
-  console.log('[one-earbud-mcp] mounted at /mcp (SSE: GET /mcp/sse, POST /mcp/message)');
+  console.log('[one-earbud-mcp] mounted at /mcp (Streamable HTTP)');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // 入口
 // ═══════════════════════════════════════════════════════════════════════
 if (require.main === module) {
-  if (process.argv.includes('--sse')) {
-    startSseStandalone();
+  if (process.argv.includes('--sse') || process.argv.includes('--http')) {
+    startHttpStandalone();
   } else {
     startStdio();
   }
 }
 
-module.exports = { mountMcp, handleSseRoutes, TOOLS };
+module.exports = { mountMcp, handleStreamableHttp, TOOLS };
