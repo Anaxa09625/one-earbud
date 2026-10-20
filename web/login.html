@@ -9,7 +9,11 @@ main{max-width:460px;margin:0 auto;padding:28px 18px}
 .oe-btn{border:0;border-radius:999px;padding:10px 18px;background:#f0ecf3;color:#2b2830;font:inherit;font-size:14px}
 .oe-btn.is-go{background:#d995ad;color:#fff}
 .oe-qr{width:220px;height:220px;image-rendering:pixelated;background:#fff;border-radius:12px;padding:8px}
-</style></head><body><main id="app"></main>
+.oe-back{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:12px;z-index:10;width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.86);color:#2b2830;display:grid;place-items:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.oe-back svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+</style></head><body>
+<button class="oe-back" onclick="location.href='index.html'" aria-label="返回首页"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+<main id="app"></main>
 <script type="module">
 import { mountMusicLogin } from './login.js';
 // 如果 localStorage 里没口令，先让用户输入

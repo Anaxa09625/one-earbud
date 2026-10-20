@@ -88,6 +88,20 @@ function mountMusicRoutes(router, authority) {
   router.post('/music/queue/move', q(b => authority.queue.move({ by: 'you', id: String(b.id || ''), to: b.to })));
   router.post('/music/queue/clear', q(() => authority.queue.clear({ by: 'you' })));
   router.delete('/music/queue/:id', q((b, req) => authority.queue.remove({ by: 'you', id: String(req.params.id || '') })));
+
+  // ── 聊天 ──
+  router.get('/music/chat', (req, res) => {
+    nostore(res); if (!guard(res)) return;
+    const since = Number(req.query.since) || 0;
+    res.json({ ok: true, messages: authority.chat.list({ since }) });
+  });
+  router.post('/music/chat', (req, res) => {
+    nostore(res); if (!guard(res)) return;
+    const { text, songCard } = req.body || {};
+    const msg = authority.chat.send({ from: 'you', text, songCard });
+    if (!msg) return res.status(400).json({ ok: false, error: 'EMPTY' });
+    res.json({ ok: true, message: msg });
+  });
 }
 
 module.exports = { mountMusicRoutes };

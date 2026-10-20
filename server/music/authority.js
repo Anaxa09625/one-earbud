@@ -7,6 +7,7 @@ const netease = require('./netease');
 const { createMusicQueueStore } = require('./queue');
 const { createMusicAuthStore } = require('./store');
 const { createNowPlaying } = require('./now-playing');
+const { createChat } = require('./chat');
 
 const YOU_NAME = process.env.ONE_EARBUD_YOU_NAME || 'YOU';
 function fmt(ms) { const s = Math.floor((ms || 0) / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -17,6 +18,7 @@ function createMusicAuthority(options) {
   const store = options.store || createMusicAuthStore(options);
   const nowPlaying = options.nowPlaying || createNowPlaying(options);
   const queue = options.queue || createMusicQueueStore(options.queueFile ? { file: options.queueFile } : undefined);
+  const chat = options.chat || createChat();
   let uidCache = '';
   async function myUid() {
     const st = store.publicState();
@@ -49,6 +51,8 @@ function createMusicAuthority(options) {
     status() { return store.publicState(); },
     // 播放列表：YOU和TA共用的一份。规矩在 queue.js 里（TA只能往后加）。
     queue,
+    // 聊天：景桦和沈晦在听歌页面里发消息
+    chat,
     // 导入：YOU的歌单。账号 id 早先存成了空的，缺就现拿一次，放内存里。
     async playlists() {
       const uid = await myUid();
