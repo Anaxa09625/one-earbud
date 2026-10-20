@@ -269,41 +269,34 @@ function handleStreamableHttp(req, res) {
 
   // ── POST: 客户端发 JSON-RPC 请求 ──
   if (req.method === 'POST') {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', async () => {
-      let msg;
-      try { msg = JSON.parse(body); } catch (_) {
+    // 读取请求体：express.json() 可能已经解析过了（req.body 存在），
+    // 也可能是独立模式需要从 stream 读。
+    const processMsg = async (msg) => {
+      if (!msg || typeof msg !== 'object') {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid JSON' }));
         return;
       }
 
-      // 判断是 initialize 请求还是普通请求
       const isInit = msg.method === 'initialize';
       const isNotification = (msg.method && msg.method.startsWith('notifications/'));
 
-      // 非 initialize 请求需要有效的 session
       const sessionId = req.headers['mcp-session-id'];
       if (!isInit && !isNotification && sessionId) {
         const session = streamableSessions.get(sessionId);
         if (session) session.lastActivity = Date.now();
       }
 
-      // 处理通知（不需要回应）
       if (isNotification) {
-        const resp = await handleJsonRpc(msg);
-        // 通知返回 202 (Accepted)
+        await handleJsonRpc(msg);
         res.writeHead(202);
         res.end();
         return;
       }
 
-      // 处理请求
       const resp = await handleJsonRpc(msg);
 
       if (isInit && resp) {
-        // initialize: 创建新 session，在响应头里返回 session ID
         const newSessionId = crypto.randomUUID();
         streamableSessions.set(newSessionId, { lastActivity: Date.now() });
         res.writeHead(200, {
@@ -315,27 +308,42 @@ function handleStreamableHttp(req, res) {
       }
 
       if (resp) {
-        // 普通请求：直接返回 JSON
         const headers = { 'Content-Type': 'application/json' };
         if (sessionId) headers['Mcp-Session-Id'] = sessionId;
         res.writeHead(200, headers);
         res.end(JSON.stringify(resp));
       } else {
-        // 没有响应（比如通知类但没被上面拦住的）
         res.writeHead(202);
         res.end();
       }
+    };
+
+    // express 已经解析过 body 了？直接用
+    if (req.body && typeof req.body === 'object') {
+      processMsg(req.body);
+      return;
+    }
+
+    // 独立模式：从 stream 读
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      let msg;
+      try { msg = JSON.parse(body); } catch (_) { msg = null; }
+      processMsg(msg);
     });
     return;
   }
 
   // ── GET: 可选的 SSE 流（server→client 推送通道）──
+  // 没有 session 时返回服务器信息（给 Claude.ai 探测用）
   if (req.method === 'GET') {
     const sessionId = req.headers['mcp-session-id'];
     const session = sessionId && streamableSessions.get(sessionId);
     if (!session) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid session. POST initialize first.' }));
+      // 没有 session — 可能是 Claude.ai 的连通性探测，返回友好信息
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ name: 'one-earbud', version: '0.2.0', status: 'ok', transport: 'streamable-http' }));
       return;
     }
     session.lastActivity = Date.now();

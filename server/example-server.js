@@ -31,7 +31,7 @@ mountMusicRoutes(router, authority);
 mountToolRoute(router, authority);  // POST /api/music/tool — MCP server 的桥接入口
 app.use('/api', router); // 路由里自带 /music 前缀，最终是 /api/music/*
 
-// MCP over SSE — Claude.ai 手机端/网页端通过 /mcp/sse 连接
+// MCP Streamable HTTP — Claude.ai 手机端/网页端通过 /mcp 连接
 mountMcp(app, authority);
 
 // 健康检查 + 防休眠端点（Render / cron-job.org 用）
