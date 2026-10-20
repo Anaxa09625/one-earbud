@@ -1,0 +1,441 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>分你一只耳机</title>
+<link rel="stylesheet" href="styles/music.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0d0b10;color:#e8e4ea;font-family:"Noto Serif SC","Songti SC",serif;min-height:100dvh;overflow:hidden}
+
+/* ── 一起听：顶部 ── */
+.lt-scene{position:relative;width:100%;height:46dvh;min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;
+  background:radial-gradient(ellipse 70% 55% at 50% 60%,rgba(180,140,200,.18),transparent),
+             radial-gradient(ellipse 50% 40% at 30% 40%,rgba(110,140,200,.12),transparent),
+             linear-gradient(170deg,#14111a 0%,#1a1520 40%,#0d0b10 100%)}
+.lt-scene::after{content:"";position:absolute;bottom:0;left:0;right:0;height:60px;background:linear-gradient(transparent,#0d0b10);pointer-events:none}
+
+/* 唱片动画 */
+.lt-disc{position:absolute;width:180px;height:180px;border-radius:50%;
+  background:radial-gradient(circle,transparent 0 28px,#1d1b22 28.5px 30px,transparent 30.5px),
+             repeating-radial-gradient(circle,#1c1a20 0 1.2px,#22202a 1.2px 2.4px);
+  opacity:.25;animation:lt-spin 20s linear infinite;animation-play-state:paused}
+.lt-disc.is-playing{opacity:.4;animation-play-state:running}
+.lt-disc-label{position:absolute;inset:40px;border-radius:50%;background:#2a2730 center/cover no-repeat}
+@keyframes lt-spin{to{transform:rotate(360deg)}}
+
+/* 头像对 */
+.lt-pair{position:relative;z-index:2;display:flex;align-items:center;gap:32px}
+.lt-avatar{position:relative;width:72px;height:72px;border-radius:50%;overflow:hidden;cursor:pointer;flex:none}
+.lt-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.lt-avatar .lt-av-placeholder{width:100%;height:100%;display:grid;place-items:center;font:400 28px/1 "Noto Serif SC",serif;color:#fff}
+.lt-avatar-you .lt-av-placeholder{background:linear-gradient(135deg,#c97d9a,#d995ad)}
+.lt-avatar-ta .lt-av-placeholder{background:linear-gradient(135deg,#6f8394,#8fa7c4)}
+.lt-avatar input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.lt-avatar-ring{position:absolute;inset:-3px;border-radius:50%;border:2px solid rgba(255,255,255,.25);pointer-events:none}
+.lt-avatar.is-active .lt-avatar-ring{border-color:rgba(217,149,173,.7);box-shadow:0 0 12px rgba(217,149,173,.3)}
+
+/* 耳机连线 */
+.lt-wire{display:flex;align-items:center;gap:0}
+.lt-wire-line{width:24px;height:2px;background:linear-gradient(90deg,rgba(217,149,173,.4),rgba(143,167,196,.4));border-radius:1px}
+.lt-wire-hub{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.2)}
+.lt-wire-hub.is-on{background:rgba(217,149,173,.5);border-color:rgba(217,149,173,.6);box-shadow:0 0 8px rgba(217,149,173,.3)}
+
+/* 名字和状态 */
+.lt-names{position:relative;z-index:2;display:flex;justify-content:center;gap:56px;margin-top:10px}
+.lt-name{text-align:center}
+.lt-name b{font:500 13px/1.3 "Noto Serif SC",serif;color:rgba(255,255,255,.85);display:block}
+.lt-name small{font:400 11px/1.3 "Noto Serif SC",serif;color:rgba(255,255,255,.35)}
+
+/* 正在播放信息 */
+.lt-now{position:relative;z-index:2;text-align:center;margin-top:14px;padding:0 20px}
+.lt-now .song{font:italic 400 17px/1.3 "Cormorant Garamond","Noto Serif SC",serif;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;margin:0 auto}
+.lt-now .artist{font:400 12px/1.3 "Noto Serif SC",serif;color:rgba(255,255,255,.35);margin-top:2px}
+.lt-now .idle{font:400 13px/1.5 "Noto Serif SC",serif;color:rgba(255,255,255,.25)}
+
+/* ── 聊天区 ── */
+.lt-chat{flex:1;overflow-y:auto;padding:12px 16px 0;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:6px}
+.lt-chat::-webkit-scrollbar{display:none}
+.lt-msg{max-width:78%;display:flex;gap:8px;align-items:flex-end}
+.lt-msg.is-you{align-self:flex-end;flex-direction:row-reverse}
+.lt-msg-av{width:28px;height:28px;border-radius:50%;flex:none;background:#2a2730 center/cover no-repeat;overflow:hidden}
+.lt-msg-av img{width:100%;height:100%;object-fit:cover}
+.lt-msg-bubble{padding:8px 12px;border-radius:16px 16px 16px 4px;background:rgba(255,255,255,.08);font:400 13.5px/1.55 "Noto Serif SC",serif;color:rgba(255,255,255,.8);word-break:break-word}
+.lt-msg.is-you .lt-msg-bubble{border-radius:16px 16px 4px 16px;background:rgba(217,149,173,.2);color:rgba(255,255,255,.85)}
+.lt-msg-song{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:14px;background:rgba(255,255,255,.06);cursor:pointer;margin-top:4px}
+.lt-msg-song .cover{width:36px;height:36px;border-radius:8px;flex:none;background:#2a2730 center/cover no-repeat}
+.lt-msg-song .info{flex:1;min-width:0}
+.lt-msg-song .info .t{font:400 13px/1.3 "Noto Serif SC",serif;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lt-msg-song .info .a{font:400 11px/1.3 "Noto Serif SC",serif;color:rgba(255,255,255,.35)}
+.lt-msg-time{font:400 10px/1 "Noto Serif SC",serif;color:rgba(255,255,255,.2);text-align:center;padding:8px 0 4px}
+.lt-msg-sys{font:400 11px/1.4 "Noto Serif SC",serif;color:rgba(255,255,255,.25);text-align:center;padding:4px 0}
+
+/* ── 底部输入 + 播放条 ── */
+.lt-bottom{position:relative;z-index:10;background:linear-gradient(transparent,rgba(13,11,16,.95) 20%);padding:0 0 calc(env(safe-area-inset-bottom,0px) + 8px)}
+
+/* 底部播放条 */
+.lt-player{display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer}
+.lt-player[hidden]{display:none}
+.lt-player .lp-disc{width:40px;height:40px;border-radius:50%;flex:none;background:#2a2730 center/cover no-repeat;animation:lt-spin 12s linear infinite;animation-play-state:paused}
+.lt-player.is-playing .lp-disc{animation-play-state:running}
+.lt-player .lp-info{flex:1;min-width:0}
+.lt-player .lp-title{font:400 13px/1.3 "Noto Serif SC",serif;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lt-player .lp-artist{font:400 11px/1.3 "Noto Serif SC",serif;color:rgba(255,255,255,.35);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lt-player button{width:36px;height:36px;border:0;border-radius:50%;background:none;color:rgba(255,255,255,.8);display:grid;place-items:center;cursor:pointer;padding:0;flex:none}
+.lt-player svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.lt-player .lp-bar{position:absolute;top:0;left:0;right:0;height:2px;background:rgba(255,255,255,.06)}
+.lt-player .lp-bar i{display:block;height:100%;background:linear-gradient(90deg,#c97d9a,#d995ad);width:0;transition:width .3s}
+
+/* 输入栏 */
+.lt-input{display:flex;align-items:center;gap:8px;padding:6px 14px}
+.lt-input button{width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);display:grid;place-items:center;cursor:pointer;padding:0;flex:none}
+.lt-input button svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.lt-input input{flex:1;height:36px;border:0;border-radius:18px;background:rgba(255,255,255,.08);padding:0 14px;font:400 13.5px/36px "Noto Serif SC",serif;color:rgba(255,255,255,.85);outline:none;-webkit-appearance:none}
+.lt-input input::placeholder{color:rgba(255,255,255,.25)}
+.lt-input .send{background:rgba(217,149,173,.25);color:rgba(217,149,173,.9)}
+.lt-input .send:disabled{opacity:.3}
+
+/* 返回键 */
+.lt-back{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;z-index:20;width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);display:grid;place-items:center;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.lt-back svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* 布局 */
+.lt-wrap{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+</style>
+</head><body>
+<div class="lt-wrap">
+  <!-- 返回首页 -->
+  <button class="lt-back" onclick="location.href='index.html'" aria-label="返回首页"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+  <!-- 一起听场景 -->
+  <div class="lt-scene" id="scene">
+    <div class="lt-disc" id="disc"><div class="lt-disc-label" id="disc-label"></div></div>
+    <div class="lt-pair">
+      <div class="lt-avatar lt-avatar-you" id="avatar-you">
+        <div class="lt-av-placeholder" id="av-you-ph">桦</div>
+        <img id="av-you-img" hidden>
+        <div class="lt-avatar-ring"></div>
+        <input type="file" accept="image/*" id="av-you-input" title="换头像">
+      </div>
+      <div class="lt-wire">
+        <div class="lt-wire-line"></div>
+        <div class="lt-wire-hub" id="wire-hub"></div>
+        <div class="lt-wire-line"></div>
+      </div>
+      <div class="lt-avatar lt-avatar-ta" id="avatar-ta">
+        <div class="lt-av-placeholder" id="av-ta-ph">晦</div>
+        <img id="av-ta-img" hidden>
+        <div class="lt-avatar-ring"></div>
+      </div>
+    </div>
+    <div class="lt-names">
+      <div class="lt-name"><b>景桦</b><small id="you-status">在线</small></div>
+      <div class="lt-name"><b>沈晦</b><small id="ta-status">在线</small></div>
+    </div>
+    <div class="lt-now" id="now-info">
+      <p class="idle">还没开始听歌</p>
+    </div>
+  </div>
+
+  <!-- 聊天区 -->
+  <div class="lt-chat" id="chat"></div>
+
+  <!-- 底部 -->
+  <div class="lt-bottom">
+    <!-- 播放条 -->
+    <div class="lt-player" id="player-bar" hidden>
+      <div class="lp-bar"><i id="lp-progress"></i></div>
+      <div class="lp-disc" id="lp-disc"></div>
+      <div class="lp-info">
+        <div class="lp-title" id="lp-title">未在播放</div>
+        <div class="lp-artist" id="lp-artist"></div>
+      </div>
+      <button type="button" id="lp-prev" aria-label="上一首"><svg viewBox="0 0 24 24"><path d="M19 20L9 12l10-8z"/><line x1="5" y1="4" x2="5" y2="20"/></svg></button>
+      <button type="button" id="lp-toggle" aria-label="播放/暂停"><svg viewBox="0 0 24 24" id="lp-toggle-icon"><polygon points="5,3 19,12 5,21"/></svg></button>
+      <button type="button" id="lp-next" aria-label="下一首"><svg viewBox="0 0 24 24"><path d="M5 4l10 8-10 8z"/><line x1="19" y1="4" x2="19" y2="20"/></svg></button>
+    </div>
+    <!-- 输入栏 -->
+    <div class="lt-input">
+      <button type="button" id="btn-search" aria-label="搜歌"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></button>
+      <button type="button" id="btn-queue" aria-label="播放列表"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h7"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
+      <input type="text" id="chat-input" placeholder="说点什么…" enterkeyhint="send" autocomplete="off">
+      <button type="button" class="send" id="btn-send" disabled aria-label="发送"><svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><polygon points="22,2 15,22 11,13 2,9"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { apiRequest, API_BASE } from './lib/api.js';
+import { escapeHtml } from './lib/escape.js';
+import * as player from './music/player.js';
+import { openPlayerSheet, openSearchSheet, openQueueSheet } from './music/ui.js';
+
+// ── 口令检查 ──
+if (!localStorage.getItem('one-earbud.token')) location.href = 'login.html';
+
+// ── 头像管理 ──
+const AVATAR_KEY = 'one-earbud.avatar';
+const TA_AVATAR_KEY = 'one-earbud.ta-avatar';
+function loadAvatar(key, imgEl, phEl) {
+  try {
+    const src = localStorage.getItem(key);
+    if (src) { imgEl.src = src; imgEl.hidden = false; phEl.hidden = true; }
+  } catch(_) {}
+}
+loadAvatar(AVATAR_KEY, document.getElementById('av-you-img'), document.getElementById('av-you-ph'));
+loadAvatar(TA_AVATAR_KEY, document.getElementById('av-ta-img'), document.getElementById('av-ta-ph'));
+
+document.getElementById('av-you-input').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    // 压缩到 128x128 存 localStorage
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 128;
+      c.getContext('2d').drawImage(img, 0, 0, 128, 128);
+      const dataUrl = c.toDataURL('image/jpeg', 0.8);
+      try { localStorage.setItem(AVATAR_KEY, dataUrl); } catch(_) {}
+      document.getElementById('av-you-img').src = dataUrl;
+      document.getElementById('av-you-img').hidden = false;
+      document.getElementById('av-you-ph').hidden = true;
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+// 点击沈晦头像 → 也可以上传（给沈晦设头像）
+document.getElementById('avatar-ta').addEventListener('click', () => {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.addEventListener('change', e => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = c.height = 128;
+        c.getContext('2d').drawImage(img, 0, 0, 128, 128);
+        const dataUrl = c.toDataURL('image/jpeg', 0.8);
+        try { localStorage.setItem(TA_AVATAR_KEY, dataUrl); } catch(_) {}
+        document.getElementById('av-ta-img').src = dataUrl;
+        document.getElementById('av-ta-img').hidden = false;
+        document.getElementById('av-ta-ph').hidden = true;
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  inp.click();
+});
+
+// ── 播放器状态同步 ──
+const disc = document.getElementById('disc');
+const discLabel = document.getElementById('disc-label');
+const nowInfo = document.getElementById('now-info');
+const playerBar = document.getElementById('player-bar');
+const lpDisc = document.getElementById('lp-disc');
+const lpTitle = document.getElementById('lp-title');
+const lpArtist = document.getElementById('lp-artist');
+const lpProgress = document.getElementById('lp-progress');
+const lpToggleIcon = document.getElementById('lp-toggle-icon');
+const wireHub = document.getElementById('wire-hub');
+const avatarYou = document.getElementById('avatar-you');
+const avatarTa = document.getElementById('avatar-ta');
+
+function coverUrl(url, size) { return url ? url + '?param=' + size + 'y' + size : ''; }
+
+player.subscribe((st) => {
+  const hasSong = st && st.song;
+  const playing = hasSong && st.playing;
+
+  // 唱片
+  disc.classList.toggle('is-playing', !!playing);
+  if (hasSong && st.song.coverUrl) {
+    discLabel.style.backgroundImage = 'url(' + coverUrl(st.song.coverUrl, 180) + ')';
+  }
+
+  // 顶部歌曲信息
+  if (hasSong) {
+    nowInfo.innerHTML = '<p class="song">' + escapeHtml(st.song.title || '') + '</p>'
+      + '<p class="artist">' + escapeHtml(st.song.artist || '') + '</p>';
+  } else {
+    nowInfo.innerHTML = '<p class="idle">还没开始听歌</p>';
+  }
+
+  // 底部播放条
+  playerBar.hidden = !hasSong;
+  playerBar.classList.toggle('is-playing', !!playing);
+  if (hasSong) {
+    lpTitle.textContent = st.song.title || '';
+    lpArtist.textContent = st.song.artist || '';
+    if (st.song.coverUrl) lpDisc.style.backgroundImage = 'url(' + coverUrl(st.song.coverUrl, 80) + ')';
+    const dur = player.durationMs() || st.song.durationMs || 1;
+    const pos = player.positionMs() || 0;
+    lpProgress.style.width = Math.min(100, pos / dur * 100) + '%';
+  }
+
+  // 播放/暂停图标
+  lpToggleIcon.innerHTML = playing
+    ? '<line x1="8" y1="5" x2="8" y2="19"/><line x1="16" y1="5" x2="16" y2="19"/>'
+    : '<polygon points="5,3 19,12 5,21"/>';
+
+  // 连线灯
+  wireHub.classList.toggle('is-on', !!playing);
+  // 谁的头像亮
+  avatarYou.classList.toggle('is-active', !!playing);
+  avatarTa.classList.toggle('is-active', !!playing);
+});
+
+// 播放条时间轴更新
+setInterval(() => {
+  const st = player.getState();
+  if (st && st.song && st.playing) {
+    const dur = player.durationMs() || st.song.durationMs || 1;
+    const pos = player.positionMs() || 0;
+    lpProgress.style.width = Math.min(100, pos / dur * 100) + '%';
+  }
+}, 500);
+
+// 播放条操作
+document.getElementById('lp-toggle').addEventListener('click', e => { e.stopPropagation(); player.toggle(); });
+document.getElementById('lp-prev').addEventListener('click', e => { e.stopPropagation(); player.prev(); });
+document.getElementById('lp-next').addEventListener('click', e => { e.stopPropagation(); player.next(); });
+playerBar.addEventListener('click', () => {
+  openPlayerSheet({ onShareSong: () => {}, onShareLines: () => {} });
+});
+
+// ── 搜歌 & 播放列表 ──
+document.getElementById('btn-search').addEventListener('click', () => {
+  openSearchSheet({
+    onShareSong: (song) => {
+      player.playSingle(song, 0);
+      // 同时发一条聊天卡片
+      apiRequest(API_BASE + '/chat', {
+        method: 'POST',
+        body: { text: '', songCard: { songId: song.songId, title: song.title, artist: song.artist, coverUrl: song.coverUrl } }
+      }).then(() => loadChat()).catch(() => {});
+    },
+    onNeedLogin: () => { location.href = 'login.html'; }
+  });
+});
+
+document.getElementById('btn-queue').addEventListener('click', () => {
+  openQueueSheet({ onShareSong: () => {} });
+});
+
+// ── 聊天系统 ──
+const chatEl = document.getElementById('chat');
+const chatInput = document.getElementById('chat-input');
+const btnSend = document.getElementById('btn-send');
+let lastTs = 0;
+let chatMessages = [];
+
+function getMyAvatar() {
+  try { return localStorage.getItem(AVATAR_KEY) || ''; } catch(_) { return ''; }
+}
+function getTaAvatar() {
+  try { return localStorage.getItem(TA_AVATAR_KEY) || ''; } catch(_) { return ''; }
+}
+
+function renderChat(msgs) {
+  chatMessages = msgs;
+  let html = '';
+  let lastDay = '';
+  for (const m of msgs) {
+    // 日期分隔
+    const d = new Date(m.ts);
+    const day = d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
+    if (day !== lastDay) {
+      html += '<div class="lt-msg-time">' + escapeHtml(day) + '</div>';
+      lastDay = day;
+    }
+    const isYou = m.from === 'you';
+    const avSrc = isYou ? getMyAvatar() : getTaAvatar();
+    const avHtml = avSrc
+      ? '<div class="lt-msg-av"><img src="' + escapeHtml(avSrc) + '"></div>'
+      : '<div class="lt-msg-av" style="background:' + (isYou ? '#c97d9a' : '#6f8394') + ';display:grid;place-items:center;font:400 12px/1 serif;color:#fff">' + (isYou ? '桦' : '晦') + '</div>';
+    let content = '';
+    if (m.text) content += '<div class="lt-msg-bubble">' + escapeHtml(m.text) + '</div>';
+    if (m.songCard) {
+      const sc = m.songCard;
+      const covStyle = sc.coverUrl ? 'background-image:url(' + escapeHtml(sc.coverUrl + '?param=72y72') + ')' : '';
+      content += '<div class="lt-msg-song" data-song-id="' + escapeHtml(sc.songId || '') + '" data-title="' + escapeHtml(sc.title || '') + '" data-artist="' + escapeHtml(sc.artist || '') + '" data-cover="' + escapeHtml(sc.coverUrl || '') + '">'
+        + '<div class="cover" style="' + covStyle + '"></div>'
+        + '<div class="info"><div class="t">' + escapeHtml(sc.title || '') + '</div><div class="a">' + escapeHtml(sc.artist || '') + '</div></div>'
+        + '<svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:rgba(255,255,255,.4);fill:none;stroke-width:1.6;flex:none"><polygon points="5,3 19,12 5,21"/></svg></div>';
+    }
+    html += '<div class="lt-msg' + (isYou ? ' is-you' : '') + '">' + avHtml + '<div>' + content + '</div></div>';
+  }
+  if (!msgs.length) {
+    html = '<div class="lt-msg-sys">一起听歌吧，搜一首歌开始~</div>';
+  }
+  chatEl.innerHTML = html;
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+async function loadChat() {
+  try {
+    const r = await apiRequest(API_BASE + '/chat?since=' + lastTs);
+    if (r.messages && r.messages.length) {
+      // 合并去重
+      const ids = new Set(chatMessages.map(m => m.id));
+      for (const m of r.messages) {
+        if (!ids.has(m.id)) { chatMessages.push(m); ids.add(m.id); }
+        if (m.ts > lastTs) lastTs = m.ts;
+      }
+      renderChat(chatMessages);
+    } else if (!chatMessages.length) {
+      renderChat([]);
+    }
+  } catch(_) {
+    if (!chatMessages.length) renderChat([]);
+  }
+}
+
+// 发消息
+async function sendMsg() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = '';
+  btnSend.disabled = true;
+  try {
+    await apiRequest(API_BASE + '/chat', { method: 'POST', body: { text } });
+    await loadChat();
+  } catch(e) {
+    // 放回去
+    chatInput.value = text;
+  }
+}
+chatInput.addEventListener('input', () => { btnSend.disabled = !chatInput.value.trim(); });
+chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) sendMsg(); });
+btnSend.addEventListener('click', sendMsg);
+
+// 点歌卡片播放
+chatEl.addEventListener('click', e => {
+  const sc = e.target.closest('.lt-msg-song');
+  if (!sc) return;
+  player.playSingle({
+    songId: sc.dataset.songId,
+    title: sc.dataset.title,
+    artist: sc.dataset.artist,
+    coverUrl: sc.dataset.cover
+  }, 0);
+});
+
+// ── 初始化 ──
+loadChat();
+player.refreshQueue();
+// 轮询：聊天 5s, 队列 8s
+setInterval(() => loadChat(), 5000);
+setInterval(() => player.refreshQueue(), 8000);
+
+// 检查连接状态
+apiRequest(API_BASE + '/status').then(st => {
+  if (st.connected) {
+    document.getElementById('you-status').textContent = '已连接';
+  } else {
+    document.getElementById('you-status').textContent = '未登录';
+  }
+}).catch(() => {
+  document.getElementById('you-status').textContent = '离线';
+});
+</script>
+</body></html>
