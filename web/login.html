@@ -10,5 +10,26 @@ main{max-width:460px;margin:0 auto;padding:28px 18px}
 .oe-btn.is-go{background:#d995ad;color:#fff}
 .oe-qr{width:220px;height:220px;image-rendering:pixelated;background:#fff;border-radius:12px;padding:8px}
 </style></head><body><main id="app"></main>
-<script type="module">import { mountMusicLogin } from './login.js'; mountMusicLogin({ host: document.getElementById('app') });</script>
+<script type="module">
+import { mountMusicLogin } from './login.js';
+// 如果 localStorage 里没口令，先让用户输入
+const saved = localStorage.getItem('one-earbud.token');
+if (!saved) {
+  const app = document.getElementById('app');
+  app.innerHTML = '<h1 class="oe-title">分你一只耳机</h1><p class="oe-sub">先输入访问口令</p>'
+    + '<section class="oe-card"><div class="oe-label">口令</div>'
+    + '<input id="tk" type="text" placeholder="你在 Render 环境变量里设的 ONE_EARBUD_TOKEN" '
+    + 'style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #e0dce3;border-radius:12px;font:inherit;font-size:15px;margin-bottom:12px">'
+    + '<button type="button" class="oe-btn is-go" id="go" style="width:100%">确认</button></section>';
+  document.getElementById('go').addEventListener('click', () => {
+    const v = document.getElementById('tk').value.trim();
+    if (!v) return alert('口令不能为空');
+    localStorage.setItem('one-earbud.token', v);
+    mountMusicLogin({ host: app });
+  });
+  document.getElementById('tk').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('go').click(); });
+} else {
+  mountMusicLogin({ host: document.getElementById('app') });
+}
+</script>
 </body></html>
