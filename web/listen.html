@@ -187,12 +187,16 @@ document.getElementById('av-you-input').addEventListener('change', e => {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    // 压缩到 128x128 存 localStorage
+    // 压缩到 300x300 存 localStorage（手机 3x 屏需要 216px+）
     const img = new Image();
     img.onload = () => {
-      const c = document.createElement('canvas'); c.width = c.height = 128;
-      c.getContext('2d').drawImage(img, 0, 0, 128, 128);
-      const dataUrl = c.toDataURL('image/jpeg', 0.8);
+      const sz = 300;
+      const c = document.createElement('canvas'); c.width = c.height = sz;
+      // 居中裁切成正方形
+      const side = Math.min(img.width, img.height);
+      const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+      c.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, sz, sz);
+      const dataUrl = c.toDataURL('image/jpeg', 0.92);
       try { localStorage.setItem(AVATAR_KEY, dataUrl); } catch(_) {}
       document.getElementById('av-you-img').src = dataUrl;
       document.getElementById('av-you-img').hidden = false;
@@ -213,9 +217,12 @@ document.getElementById('avatar-ta').addEventListener('click', () => {
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const c = document.createElement('canvas'); c.width = c.height = 128;
-        c.getContext('2d').drawImage(img, 0, 0, 128, 128);
-        const dataUrl = c.toDataURL('image/jpeg', 0.8);
+        const sz = 300;
+        const c = document.createElement('canvas'); c.width = c.height = sz;
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+        c.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, sz, sz);
+        const dataUrl = c.toDataURL('image/jpeg', 0.92);
         try { localStorage.setItem(TA_AVATAR_KEY, dataUrl); } catch(_) {}
         document.getElementById('av-ta-img').src = dataUrl;
         document.getElementById('av-ta-img').hidden = false;
