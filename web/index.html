@@ -1,0 +1,138 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>分你一只耳机</title>
+<link rel="stylesheet" href="styles/music.css">
+<style>
+body{margin:0;background:#f6f3f7;color:#2b2830;font-family:"Songti SC","Noto Serif SC",serif;min-height:100dvh}
+.oe-home{max-width:480px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 20px) 14px calc(env(safe-area-inset-bottom,0px) + 20px)}
+.oe-head{text-align:center;padding:18px 0 10px}
+.oe-head h1{font:400 22px/1.3 "Noto Serif SC",serif;margin:0 0 2px}
+.oe-head p{font:400 13px/1.5 "Noto Serif SC",serif;color:#8f8a95;margin:0}
+.oe-status{background:#fff;border-radius:18px;padding:16px;margin:12px 0;text-align:center}
+.oe-status .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.oe-status .dot.on{background:#7bc67e}.oe-status .dot.off{background:#ccc}
+.oe-status .label{font-size:14px;color:#555}
+.oe-actions{display:flex;flex-direction:column;gap:10px;margin:16px 0}
+.oe-btn{border:0;border-radius:999px;padding:14px 20px;font:inherit;font-size:15px;cursor:pointer;width:100%;text-align:center}
+.oe-btn.primary{background:#d995ad;color:#fff}.oe-btn.secondary{background:#f0ecf3;color:#2b2830}
+.oe-now{background:#fff;border-radius:18px;padding:16px;margin:12px 0}
+.oe-now .title{font-size:16px;margin:0 0 4px}.oe-now .artist{font-size:13px;color:#8f8a95;margin:0}
+.oe-now .idle{font-size:14px;color:#aaa}
+#minibar-host{position:sticky;top:0;z-index:50}
+.oe-queue-list{margin:12px 0}
+.oe-queue-list h3{font:400 15px/1 "Noto Serif SC",serif;color:#8f8a95;margin:0 0 10px;padding:0 4px}
+.oe-qi{background:#fff;border-radius:14px;padding:12px 14px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:10px}
+.oe-qi.is-cur{background:#f0ecf3}.oe-qi .cover{width:40px;height:40px;border-radius:8px;background:#e8e4ea center/cover no-repeat;flex:none}
+.oe-qi .info{flex:1;min-width:0}.oe-qi .info .t{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oe-qi .info .a{font-size:12px;color:#8f8a95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oe-qi .info .n{font-size:12px;color:#b89eb5;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+</head><body>
+<div id="minibar-host"></div>
+<div class="oe-home" id="app">
+  <div class="oe-head">
+    <h1>分你一只耳机</h1>
+    <p>和沈晦一起听歌</p>
+  </div>
+  <div class="oe-status" id="status">
+    <span class="dot off"></span><span class="label">检查连接…</span>
+  </div>
+  <div class="oe-now" id="now" hidden>
+    <p class="idle">没在放歌</p>
+  </div>
+  <div class="oe-actions">
+    <button class="oe-btn primary" id="btn-search">搜一首歌</button>
+    <button class="oe-btn secondary" id="btn-login">网易云登录</button>
+  </div>
+  <div class="oe-queue-list" id="queue-section" hidden>
+    <h3>播放列表</h3>
+    <div id="queue-list"></div>
+  </div>
+</div>
+
+<script type="module">
+import { apiRequest, API_BASE } from './lib/api.js';
+import { escapeHtml } from './lib/escape.js';
+import * as player from './music/player.js';
+import { createMiniBar, openPlayerSheet, openSearchSheet } from './music/ui.js';
+
+// ── 口令检查 ──
+const saved = localStorage.getItem('one-earbud.token');
+if (!saved) {
+  // 没口令，跳去登录页输入
+  location.href = 'login.html';
+}
+
+// ── 状态检查 ──
+const statusEl = document.getElementById('status');
+async function checkStatus() {
+  try {
+    const st = await apiRequest(API_BASE + '/status');
+    const dot = statusEl.querySelector('.dot');
+    const label = statusEl.querySelector('.label');
+    if (st.connected) {
+      dot.className = 'dot on';
+      const nick = (st.profile && st.profile.nickname) || '';
+      label.textContent = '已连上网易云' + (nick ? ' · ' + nick : '') + (st.vip ? ' · 会员' : '');
+    } else {
+      dot.className = 'dot off';
+      label.textContent = '还没登录网易云';
+    }
+  } catch (e) {
+    statusEl.querySelector('.dot').className = 'dot off';
+    statusEl.querySelector('.label').textContent = '连接失败：' + (e.message || '');
+  }
+}
+checkStatus();
+
+// ── 顶部播放条 ──
+const minibar = createMiniBar({
+  onOpen: () => openPlayerSheet({ onShareSong: () => {}, onShareLines: () => {} }),
+  onList: null,
+  onShareSong: () => {}
+});
+document.getElementById('minibar-host').appendChild(minibar);
+
+// ── 播放列表显示 ──
+const queueSection = document.getElementById('queue-section');
+const queueListEl = document.getElementById('queue-list');
+function renderQueue() {
+  const q = player.getQueue();
+  if (!q.items || !q.items.length) { queueSection.hidden = true; return; }
+  queueSection.hidden = false;
+  queueListEl.innerHTML = q.items.map(item => {
+    const isCur = item.id === q.currentId;
+    const coverStyle = item.coverUrl ? 'background-image:url(' + escapeHtml(item.coverUrl + '?param=80y80') + ')' : '';
+    return '<div class="oe-qi' + (isCur ? ' is-cur' : '') + '" data-id="' + escapeHtml(item.id) + '">'
+      + '<div class="cover" style="' + coverStyle + '"></div>'
+      + '<div class="info"><div class="t">' + escapeHtml(item.title || '…') + '</div>'
+      + '<div class="a">' + escapeHtml(item.artist || '') + '</div>'
+      + (item.note ? '<div class="n">' + escapeHtml(item.addedBy === 'ta' ? '沈晦：' : '') + escapeHtml(item.note) + '</div>' : '')
+      + '</div></div>';
+  }).join('');
+}
+player.subscribeQueue(renderQueue);
+queueListEl.addEventListener('click', e => {
+  const qi = e.target.closest('.oe-qi');
+  if (!qi) return;
+  player.playQueueItem(qi.dataset.id);
+});
+
+// ── 定时刷新列表（捕获沈晦塞进来的歌）──
+player.refreshQueue();
+setInterval(() => player.refreshQueue(), 8000);
+
+// ── 搜歌按钮 ──
+document.getElementById('btn-search').addEventListener('click', () => {
+  openSearchSheet({
+    onPick: () => {},
+    onShareSong: (song) => player.playSingle(song, 0),
+    onNeedLogin: () => { location.href = 'login.html'; }
+  });
+});
+
+// ── 登录按钮 ──
+document.getElementById('btn-login').addEventListener('click', () => {
+  location.href = 'login.html';
+});
+</script>
+</body></html>
