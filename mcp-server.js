@@ -244,6 +244,7 @@ function startStdio() {
 // SSE 会话管理
 const sessions = new Map(); // sessionId -> { res, lastActivity }
 const SESSION_TIMEOUT = 10 * 60 * 1000; // 10 分钟没活动就清
+let mcpPathPrefix = ''; // 集成模式下设为 '/mcp'
 
 function cleanSessions() {
   const now = Date.now();
@@ -284,7 +285,7 @@ function handleSseRoutes(req, res) {
     sessions.set(sessionId, { res, lastActivity: Date.now() });
 
     // 告诉客户端往哪里 POST
-    sseWrite(res, 'endpoint', '/message?sessionId=' + sessionId);
+    sseWrite(res, 'endpoint', mcpPathPrefix + '/message?sessionId=' + sessionId);
 
     // 心跳
     const hb = setInterval(() => {
@@ -354,6 +355,7 @@ function mountMcp(app, authority) {
   const { createTaMusicTool } = require('./server/agent/tool-contract');
   const tool = createTaMusicTool({ authority });
   toolHandler = async (input) => tool.handler(input);
+  mcpPathPrefix = '/mcp'; // endpoint 返回完整路径，Claude.ai 才能正确 POST
 
   // 把 SSE 路由挂到 /mcp 前缀下
   app.use('/mcp', (req, res) => {
