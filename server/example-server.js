@@ -8,6 +8,8 @@ const path = require('path');
 const express = require('express');
 const { createMusicAuthority } = require('./music/authority');
 const { mountMusicRoutes } = require('./music/routes');
+const { mountToolRoute } = require('./music/tool-route');
+const { mountMcp } = require('../mcp-server');
 
 const PORT = Number(process.env.PORT) || 8787;
 const TOKEN = process.env.ONE_EARBUD_TOKEN || '';          // 访问口令：前端放在 localStorage 'one-earbud.token'
@@ -26,7 +28,36 @@ router.use((req, res, next) => {
 });
 const authority = createMusicAuthority();
 mountMusicRoutes(router, authority);
+mountToolRoute(router, authority);  // POST /api/music/tool — MCP server 的桥接入口
 app.use('/api', router); // 路由里自带 /music 前缀，最终是 /api/music/*
 
-app.listen(PORT, () => console.log('[one-earbud] http://localhost:' + PORT + '/login.html'));
+// MCP over SSE — Claude.ai 手机端/网页端通过 /mcp/sse 连接
+mountMcp(app, authority);
+
+// 健康检查 + 防休眠端点（Render / cron-job.org 用）
+app.get('/health', (_req, res) => {
+  const st = authority.status();
+  res.json({ ok: true, connected: !!st.connected, uptime: Math.floor(process.uptime()) });
+});
+
+// Render 免费版 15 分钟没请求就休眠，文件系统也会清掉。
+// 开启自动 keep-alive：自己每 14 分钟 ping 一次 /health，防止休眠。
+// 设置 KEEP_ALIVE=1 或 RENDER=true 时启用。
+const KEEP_ALIVE = process.env.KEEP_ALIVE === '1' || process.env.RENDER === 'true';
+
+app.listen(PORT, () => {
+  console.log('[one-earbud] http://localhost:' + PORT + '/login.html');
+  if (KEEP_ALIVE) {
+    const interval = 14 * 60 * 1000; // 14 分钟
+    setInterval(() => {
+      const url = 'http://localhost:' + PORT + '/health';
+      require('http').get(url, res => {
+        let d = ''; res.on('data', c => d += c);
+        res.on('end', () => console.log('[keep-alive] ' + d));
+      }).on('error', e => console.warn('[keep-alive] ping failed:', e.message));
+    }, interval).unref();
+    console.log('[keep-alive] 每 14 分钟自动 ping /health，防止 Render 休眠');
+  }
+});
+
 module.exports = { app, authority };

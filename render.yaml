@@ -1,0 +1,22 @@
+# Render 部署配置
+# 用法：Render Dashboard → New → Blueprint → 选你 fork 的仓库
+# 或者手动建 Web Service 也行，这个文件会自动被识别
+
+services:
+  - type: web
+    name: one-earbud
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: "8787"
+      - key: ONE_EARBUD_TOKEN
+        sync: false          # 建项目时手动填，不存 git
+      - key: KEEP_ALIVE
+        value: "1"           # 自动 ping 防休眠
+      - key: NODE_ENV
+        value: production
+      - key: NETEASE_REAL_IP
+        sync: false          # 海外服务器才需要填，国内可以不填

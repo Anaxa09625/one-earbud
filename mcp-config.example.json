@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "one-earbud": {
+      "command": "node",
+      "args": ["/你的路径/one-earbud/mcp-server.js"],
+      "env": {
+        "ONE_EARBUD_URL": "http://localhost:8787",
+        "ONE_EARBUD_TOKEN": "你的口令"
+      }
+    }
+  }
+}
